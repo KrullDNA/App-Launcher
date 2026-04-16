@@ -1,0 +1,51 @@
+appId: com.kdna.quicklaunch
+productName: KDNA QuickLaunch
+directories:
+  buildResources: assets
+  output: dist
+files:
+  - out/**/*
+  - node_modules/**/*
+asar: true
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icons/icon-256.png
+  artifactName: "${productName}-Setup-${version}-win.${ext}"
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: assets/icons/icon-256.png
+  uninstallerIcon: assets/icons/icon-256.png
+  deleteAppDataOnUninstall: false
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: assets/icons/icon.png
+  category: public.app-category.utilities
+  artifactName: "${productName}-${version}-mac-${arch}.${ext}"
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: assets/icons/icon.png
+  category: Utility
+  artifactName: "${productName}-${version}-linux.${ext}"
+publish:
+  provider: github
+  owner: KrullDNA
+  repo: App-Launcher
+  releaseType: release

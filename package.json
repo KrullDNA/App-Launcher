@@ -1,0 +1,45 @@
+{
+  "name": "kdna-quicklaunch",
+  "version": "1.0.0",
+  "description": "Cross-platform adaptive application launcher inspired by Quicksilver",
+  "main": "./out/main/main.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "package": "npm run build && electron-builder --publish never",
+    "package:win": "npm run build && electron-builder --win --publish never",
+    "package:mac": "npm run build && electron-builder --mac --publish never",
+    "package:linux": "npm run build && electron-builder --linux --publish never",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KrullDNA/App-Launcher.git"
+  },
+  "keywords": ["launcher", "quicksilver", "electron", "productivity"],
+  "author": "KDNA",
+  "license": "MIT",
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "^10.5.0",
+    "electron": "^41.2.0",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "postcss": "^8.5.10",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^6.0.2",
+    "vite": "^7.3.2"
+  },
+  "dependencies": {
+    "electron-store": "^11.0.2",
+    "fuse.js": "^7.3.0",
+    "mathjs": "^15.2.0",
+    "zustand": "^5.0.12"
+  }
+}
