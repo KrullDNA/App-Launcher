@@ -1,15 +1,26 @@
-import { useEffect, useRef } from 'react'
+import React, { useEffect, useState } from 'react'
+import { SearchBar } from './components/SearchBar'
+import { ResultsList } from './components/ResultsList'
+import { useTheme } from './hooks/useTheme'
+import { useKeyboardNav } from './hooks/useKeyboardNav'
+import { useSearchStore } from './stores/searchStore'
 
-function App(): JSX.Element {
-  const inputRef = useRef<HTMLInputElement>(null)
+const INPUT_HEIGHT = 72 // Must match main.ts
+const ITEM_HEIGHT = 52
+const DIVIDER_HEIGHT = 1
+const MAX_VISIBLE = 8
 
-  useEffect(() => {
-    const cleanup = window.quicklaunch.onWindowShown(() => {
-      inputRef.current?.focus()
-    })
-    return cleanup
-  }, [])
+function App(): React.JSX.Element {
+  const [visible, setVisible] = useState(true)
+  const results = useSearchStore((s) => s.results)
 
+  // Activate theme system
+  useTheme()
+
+  // Activate keyboard navigation
+  useKeyboardNav()
+
+  // Handle Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
@@ -20,57 +31,42 @@ function App(): JSX.Element {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  // Show/hide animation state
+  useEffect(() => {
+    const cleanupShow = window.quicklaunch.onWindowShown(() => {
+      setVisible(true)
+    })
+    const cleanupHide = window.quicklaunch.onWindowHidden(() => {
+      setVisible(false)
+    })
+    return () => {
+      cleanupShow()
+      cleanupHide()
+    }
+  }, [])
+
+  // Dynamic window resize based on result count
+  useEffect(() => {
+    const resultCount = Math.min(results.length, MAX_VISIBLE)
+    const resultsHeight = resultCount > 0 ? resultCount * ITEM_HEIGHT + DIVIDER_HEIGHT : 0
+    const totalHeight = INPUT_HEIGHT + resultsHeight
+    window.quicklaunch.window.resize(totalHeight)
+  }, [results.length])
+
   return (
     <div
+      className={`launcher-wrapper ${visible ? '' : 'launcher-hidden'}`}
       style={{
         width: '100%',
         height: '100%',
-        backgroundColor: '#1E1E2E',
+        backgroundColor: 'var(--bg-primary)',
         borderRadius: '12px',
         overflow: 'hidden',
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          height: '56px',
-          padding: '0 20px'
-        }}
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#888888"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ flexShrink: 0, marginRight: '12px' }}
-        >
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Type to launch..."
-          autoFocus
-          style={{
-            flex: 1,
-            height: '56px',
-            backgroundColor: 'transparent',
-            border: 'none',
-            outline: 'none',
-            color: '#E0E0E0',
-            fontSize: '20px',
-            fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-            fontWeight: 400
-          }}
-        />
-      </div>
+      <SearchBar />
+      <ResultsList />
     </div>
   )
 }

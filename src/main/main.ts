@@ -9,9 +9,12 @@ import {
   nativeImage
 } from 'electron'
 import { join } from 'path'
+import Store from 'electron-store'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+
+const store = new Store()
 
 const WINDOW_WIDTH = 680
 const INPUT_HEIGHT = 72
@@ -145,10 +148,23 @@ function setupIPC(): void {
     hideWindow()
   })
 
+  ipcMain.handle('window:resize', (_event, height: number) => {
+    if (!mainWindow) return
+    mainWindow.setSize(WINDOW_WIDTH, Math.round(height))
+  })
+
   ipcMain.handle('app:getInfo', () => ({
     version: app.getVersion(),
     platform: process.platform
   }))
+
+  ipcMain.handle('settings:get', (_event, key: string) => {
+    return store.get(key)
+  })
+
+  ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
+    store.set(key, value)
+  })
 }
 
 app.whenReady().then(() => {
