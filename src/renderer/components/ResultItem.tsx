@@ -17,7 +17,7 @@ const TYPE_COLORS: Record<string, string> = {
   Clip: '#00BCD4'
 }
 
-function AppIcon({ name }: { name: string }): React.JSX.Element {
+function FallbackIcon({ name }: { name: string }): React.JSX.Element {
   const hue = name.charCodeAt(0) * 7 % 360
   return (
     <div
@@ -37,6 +37,25 @@ function AppIcon({ name }: { name: string }): React.JSX.Element {
     >
       {name.charAt(0).toUpperCase()}
     </div>
+  )
+}
+
+function AppIcon({ name, icon }: { name: string; icon?: string }): React.JSX.Element {
+  if (!icon) return <FallbackIcon name={name} />
+
+  return (
+    <img
+      src={icon}
+      alt={name}
+      width={32}
+      height={32}
+      style={{ borderRadius: '8px', flexShrink: 0 }}
+      onError={(e) => {
+        // Replace with fallback on load error
+        e.currentTarget.style.display = 'none'
+        e.currentTarget.parentElement?.classList.add('icon-error')
+      }}
+    />
   )
 }
 
@@ -72,8 +91,8 @@ export function ResultItem({ result, isSelected, onMouseEnter, onClick }: Result
       )}
 
       {/* Icon */}
-      <div style={{ marginRight: '12px' }}>
-        <AppIcon name={result.name} />
+      <div style={{ marginRight: '12px', width: '32px', height: '32px' }}>
+        <AppIcon name={result.name} icon={result.icon} />
       </div>
 
       {/* Title + subtitle */}

@@ -22,7 +22,7 @@ export function useKeyboardNav(): void {
         e.preventDefault()
         const selected = results[selectedIndex]
         if (selected) {
-          console.log('Launch:', selected.name, selected.id)
+          launchResult(selected)
         }
       }
     }
@@ -30,4 +30,13 @@ export function useKeyboardNav(): void {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [results, selectedIndex, setSelectedIndex])
+}
+
+function launchResult(result: { id: string; name: string; launchPath?: string }): void {
+  if (!result.launchPath) return
+  window.quicklaunch.app.launch({
+    id: result.id,
+    name: result.name,
+    path: result.launchPath
+  })
 }

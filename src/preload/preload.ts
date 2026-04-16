@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+export interface IndexedApp {
+  id: string
+  name: string
+  path: string
+  icon?: string
+}
+
 const api = {
   window: {
     hide: (): Promise<void> => ipcRenderer.invoke('window:hide'),
@@ -7,7 +14,21 @@ const api = {
   },
   app: {
     getInfo: (): Promise<{ version: string; platform: string }> =>
-      ipcRenderer.invoke('app:getInfo')
+      ipcRenderer.invoke('app:getInfo'),
+    launch: (appData: IndexedApp): Promise<void> =>
+      ipcRenderer.invoke('app:launch', appData)
+  },
+  indexer: {
+    getApps: (): Promise<IndexedApp[]> => ipcRenderer.invoke('indexer:getApps'),
+    reindex: (): Promise<IndexedApp[]> => ipcRenderer.invoke('indexer:reindex'),
+    onAppsUpdated: (callback: (apps: IndexedApp[]) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, apps: IndexedApp[]): void =>
+        callback(apps)
+      ipcRenderer.on('indexer:apps-updated', handler)
+      return () => {
+        ipcRenderer.removeListener('indexer:apps-updated', handler)
+      }
+    }
   },
   settings: {
     get: <T>(key: string): Promise<T | undefined> => ipcRenderer.invoke('settings:get', key),

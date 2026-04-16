@@ -3,6 +3,7 @@ import { SearchBar } from './components/SearchBar'
 import { ResultsList } from './components/ResultsList'
 import { useTheme } from './hooks/useTheme'
 import { useKeyboardNav } from './hooks/useKeyboardNav'
+import { useSearch } from './hooks/useSearch'
 import { useSearchStore } from './stores/searchStore'
 
 const INPUT_HEIGHT = 72 // Must match main.ts
@@ -13,12 +14,30 @@ const MAX_VISIBLE = 8
 function App(): React.JSX.Element {
   const [visible, setVisible] = useState(true)
   const results = useSearchStore((s) => s.results)
+  const setApps = useSearchStore((s) => s.setApps)
 
   // Activate theme system
   useTheme()
 
+  // Activate Fuse.js search
+  useSearch()
+
   // Activate keyboard navigation
   useKeyboardNav()
+
+  // Load indexed apps on mount + listen for updates
+  useEffect(() => {
+    // Load cached apps immediately
+    window.quicklaunch.indexer.getApps().then((apps) => {
+      if (apps.length > 0) setApps(apps)
+    })
+
+    // Listen for re-index updates
+    const cleanup = window.quicklaunch.indexer.onAppsUpdated((apps) => {
+      setApps(apps)
+    })
+    return cleanup
+  }, [setApps])
 
   // Handle Escape
   useEffect(() => {

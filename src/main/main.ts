@@ -6,18 +6,23 @@ import {
   Menu,
   screen,
   ipcMain,
-  nativeImage
+  nativeImage,
+  shell
 } from 'electron'
 import { join } from 'path'
+import { execFile, spawn } from 'child_process'
 import Store from 'electron-store'
+import { indexApps, getCachedApps, type IndexedApp } from './indexer'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+let reindexTimer: ReturnType<typeof setInterval> | null = null
 
 const store = new Store()
 
 const WINDOW_WIDTH = 680
 const INPUT_HEIGHT = 72
+const REINDEX_INTERVAL_MS = 30 * 60 * 1000 // 30 minutes
 
 function createWindow(): void {
   const primaryDisplay = screen.getPrimaryDisplay()
@@ -62,7 +67,6 @@ function createWindow(): void {
 function showWindow(): void {
   if (!mainWindow) return
 
-  // Reposition to active monitor center
   const cursorPoint = screen.getCursorScreenPoint()
   const activeDisplay = screen.getDisplayNearestPoint(cursorPoint)
   const { x: displayX, y: displayY, width: displayWidth, height: displayHeight } =
@@ -99,7 +103,6 @@ function registerHotkey(): void {
   const registered = globalShortcut.register(hotkey, toggleWindow)
 
   if (!registered && process.platform === 'darwin') {
-    // Fallback for macOS if Cmd+Space conflicts with Spotlight
     globalShortcut.register('CommandOrControl+Shift+Space', toggleWindow)
     console.log('Hotkey registered: Cmd+Shift+Space (fallback)')
   } else {
@@ -143,6 +146,62 @@ function createTray(): void {
   })
 }
 
+// ─── App launching ───────────────────────────────────────────
+
+async function launchApp(appItem: IndexedApp): Promise<void> {
+  const appPath = appItem.path
+
+  try {
+    if (process.platform === 'win32') {
+      // Windows: use start for .lnk files, shell.openPath for others
+      if (appPath.endsWith('.lnk') || appPath.endsWith('.exe')) {
+        execFile('cmd', ['/c', 'start', '', appPath], { windowsHide: true })
+      } else {
+        await shell.openPath(appPath)
+      }
+    } else if (process.platform === 'darwin') {
+      // macOS: open the .app bundle
+      execFile('open', [appPath])
+    } else {
+      // Linux: use the exec path from .desktop file
+      // The path stored is already the executable command
+      const parts = appPath.split(/\s+/)
+      const cmd = parts[0]
+      const args = parts.slice(1).filter((a) => !a.startsWith('%'))
+      const child = spawn(cmd, args, { detached: true, stdio: 'ignore' })
+      child.unref()
+    }
+  } catch (err) {
+    console.error('Failed to launch app:', appPath, err)
+    // Fallback to shell.openPath
+    await shell.openPath(appPath)
+  }
+}
+
+// ─── Indexing lifecycle ──────────────────────────────────────
+
+function sendAppsToRenderer(apps: IndexedApp[]): void {
+  if (!mainWindow) return
+  mainWindow.webContents.send('indexer:apps-updated', apps)
+}
+
+async function runIndexing(): Promise<IndexedApp[]> {
+  console.log('Indexing applications...')
+  const apps = await indexApps()
+  console.log(`Indexed ${apps.length} applications`)
+  sendAppsToRenderer(apps)
+  return apps
+}
+
+function startReindexTimer(): void {
+  if (reindexTimer) clearInterval(reindexTimer)
+  reindexTimer = setInterval(() => {
+    runIndexing()
+  }, REINDEX_INTERVAL_MS)
+}
+
+// ─── IPC ─────────────────────────────────────────────────────
+
 function setupIPC(): void {
   ipcMain.handle('window:hide', () => {
     hideWindow()
@@ -165,17 +224,47 @@ function setupIPC(): void {
   ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
     store.set(key, value)
   })
+
+  // Indexer IPC
+  ipcMain.handle('indexer:getApps', () => {
+    return getCachedApps()
+  })
+
+  ipcMain.handle('indexer:reindex', async () => {
+    return await runIndexing()
+  })
+
+  // Launch IPC
+  ipcMain.handle('app:launch', async (_event, appData: IndexedApp) => {
+    await launchApp(appData)
+    hideWindow()
+  })
 }
 
-app.whenReady().then(() => {
+// ─── App lifecycle ───────────────────────────────────────────
+
+app.whenReady().then(async () => {
   createWindow()
   createTray()
   registerHotkey()
   setupIPC()
+
+  // Load cached apps immediately, then re-index in background
+  const cached = getCachedApps()
+  if (cached.length > 0) {
+    sendAppsToRenderer(cached)
+  }
+
+  // Initial index (background)
+  await runIndexing()
+
+  // Start periodic re-index
+  startReindexTimer()
 })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  if (reindexTimer) clearInterval(reindexTimer)
 })
 
 app.on('window-all-closed', () => {

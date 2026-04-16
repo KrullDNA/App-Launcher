@@ -37,7 +37,13 @@ export function ResultsList(): React.JSX.Element | null {
             isSelected={index === selectedIndex}
             onMouseEnter={() => setSelectedIndex(index)}
             onClick={() => {
-              console.log('Launch:', result.name, result.id)
+              if (result.launchPath) {
+                window.quicklaunch.app.launch({
+                  id: result.id,
+                  name: result.name,
+                  path: result.launchPath
+                })
+              }
             }}
           />
         ))}
