@@ -8,6 +8,7 @@ export function ResultsList(): React.JSX.Element | null {
   const results = useSearchStore((s) => s.results)
   const selectedIndex = useSearchStore((s) => s.selectedIndex)
   const setSelectedIndex = useSearchStore((s) => s.setSelectedIndex)
+  const query = useSearchStore((s) => s.query)
 
   if (results.length === 0) return null
 
@@ -38,11 +39,10 @@ export function ResultsList(): React.JSX.Element | null {
             onMouseEnter={() => setSelectedIndex(index)}
             onClick={() => {
               if (result.launchPath) {
-                window.quicklaunch.app.launch({
-                  id: result.id,
-                  name: result.name,
-                  path: result.launchPath
-                })
+                window.quicklaunch.app.launch(
+                  { id: result.id, name: result.name, path: result.launchPath },
+                  query
+                )
               }
             }}
           />

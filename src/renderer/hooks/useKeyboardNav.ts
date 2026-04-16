@@ -1,10 +1,11 @@
 import { useEffect } from 'react'
-import { useSearchStore } from '../stores/searchStore'
+import { useSearchStore, type SearchResult } from '../stores/searchStore'
 
 export function useKeyboardNav(): void {
   const results = useSearchStore((s) => s.results)
   const selectedIndex = useSearchStore((s) => s.selectedIndex)
   const setSelectedIndex = useSearchStore((s) => s.setSelectedIndex)
+  const query = useSearchStore((s) => s.query)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
@@ -22,21 +23,20 @@ export function useKeyboardNav(): void {
         e.preventDefault()
         const selected = results[selectedIndex]
         if (selected) {
-          launchResult(selected)
+          launchResult(selected, query)
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [results, selectedIndex, setSelectedIndex])
+  }, [results, selectedIndex, setSelectedIndex, query])
 }
 
-function launchResult(result: { id: string; name: string; launchPath?: string }): void {
+function launchResult(result: SearchResult, searchText: string): void {
   if (!result.launchPath) return
-  window.quicklaunch.app.launch({
-    id: result.id,
-    name: result.name,
-    path: result.launchPath
-  })
+  window.quicklaunch.app.launch(
+    { id: result.id, name: result.name, path: result.launchPath },
+    searchText
+  )
 }

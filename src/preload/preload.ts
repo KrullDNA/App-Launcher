@@ -7,6 +7,16 @@ export interface IndexedApp {
   icon?: string
 }
 
+export interface ShortcutCandidate {
+  itemId: string
+  count: number
+  lastUsed: string
+}
+
+export interface ShortcutsData {
+  [abbrev: string]: ShortcutCandidate[]
+}
+
 const api = {
   window: {
     hide: (): Promise<void> => ipcRenderer.invoke('window:hide'),
@@ -15,8 +25,8 @@ const api = {
   app: {
     getInfo: (): Promise<{ version: string; platform: string }> =>
       ipcRenderer.invoke('app:getInfo'),
-    launch: (appData: IndexedApp): Promise<void> =>
-      ipcRenderer.invoke('app:launch', appData)
+    launch: (appData: IndexedApp, searchText?: string): Promise<void> =>
+      ipcRenderer.invoke('app:launch', appData, searchText)
   },
   indexer: {
     getApps: (): Promise<IndexedApp[]> => ipcRenderer.invoke('indexer:getApps'),
@@ -29,6 +39,24 @@ const api = {
         ipcRenderer.removeListener('indexer:apps-updated', handler)
       }
     }
+  },
+  shortcuts: {
+    get: (abbrev: string): Promise<ShortcutCandidate[]> =>
+      ipcRenderer.invoke('shortcuts:get', abbrev),
+    getAll: (): Promise<ShortcutsData> =>
+      ipcRenderer.invoke('shortcuts:getAll'),
+    record: (abbrev: string, itemId: string): Promise<void> =>
+      ipcRenderer.invoke('shortcuts:record', abbrev, itemId),
+    delete: (abbrev: string): Promise<void> =>
+      ipcRenderer.invoke('shortcuts:delete', abbrev),
+    clearAll: (): Promise<void> =>
+      ipcRenderer.invoke('shortcuts:clearAll'),
+    getBackups: (): Promise<{ date: string }[]> =>
+      ipcRenderer.invoke('shortcuts:getBackups'),
+    restoreBackup: (date: string): Promise<boolean> =>
+      ipcRenderer.invoke('shortcuts:restoreBackup', date),
+    getMaxGlobalCount: (): Promise<number> =>
+      ipcRenderer.invoke('shortcuts:getMaxGlobalCount')
   },
   settings: {
     get: <T>(key: string): Promise<T | undefined> => ipcRenderer.invoke('settings:get', key),

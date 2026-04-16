@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useCallback, useState } from 'react'
 import { SearchBar } from './components/SearchBar'
 import { ResultsList } from './components/ResultsList'
 import { useTheme } from './hooks/useTheme'
@@ -15,29 +15,51 @@ function App(): React.JSX.Element {
   const [visible, setVisible] = useState(true)
   const results = useSearchStore((s) => s.results)
   const setApps = useSearchStore((s) => s.setApps)
+  const setShortcuts = useSearchStore((s) => s.setShortcuts)
+  const setMaxGlobalCount = useSearchStore((s) => s.setMaxGlobalCount)
 
   // Activate theme system
   useTheme()
 
-  // Activate Fuse.js search
+  // Activate Fuse.js search with blended ranking
   useSearch()
 
   // Activate keyboard navigation
   useKeyboardNav()
 
-  // Load indexed apps on mount + listen for updates
+  // Load shortcuts data
+  const refreshShortcuts = useCallback(async () => {
+    const [shortcuts, maxCount] = await Promise.all([
+      window.quicklaunch.shortcuts.getAll(),
+      window.quicklaunch.shortcuts.getMaxGlobalCount()
+    ])
+    setShortcuts(shortcuts)
+    setMaxGlobalCount(maxCount)
+  }, [setShortcuts, setMaxGlobalCount])
+
+  // Load indexed apps + shortcuts on mount
   useEffect(() => {
-    // Load cached apps immediately
     window.quicklaunch.indexer.getApps().then((apps) => {
       if (apps.length > 0) setApps(apps)
     })
 
-    // Listen for re-index updates
     const cleanup = window.quicklaunch.indexer.onAppsUpdated((apps) => {
       setApps(apps)
     })
+
+    refreshShortcuts()
+
     return cleanup
-  }, [setApps])
+  }, [setApps, refreshShortcuts])
+
+  // Refresh shortcuts when window is shown (picks up changes from last launch)
+  useEffect(() => {
+    const cleanup = window.quicklaunch.onWindowShown(() => {
+      setVisible(true)
+      refreshShortcuts()
+    })
+    return cleanup
+  }, [refreshShortcuts])
 
   // Handle Escape
   useEffect(() => {
@@ -50,18 +72,12 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // Show/hide animation state
+  // Hide animation state
   useEffect(() => {
-    const cleanupShow = window.quicklaunch.onWindowShown(() => {
-      setVisible(true)
-    })
-    const cleanupHide = window.quicklaunch.onWindowHidden(() => {
+    const cleanup = window.quicklaunch.onWindowHidden(() => {
       setVisible(false)
     })
-    return () => {
-      cleanupShow()
-      cleanupHide()
-    }
+    return cleanup
   }, [])
 
   // Dynamic window resize based on result count

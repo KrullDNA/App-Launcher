@@ -8,6 +8,16 @@ declare global {
     icon?: string
   }
 
+  interface ShortcutCandidate {
+    itemId: string
+    count: number
+    lastUsed: string
+  }
+
+  interface ShortcutsData {
+    [abbrev: string]: ShortcutCandidate[]
+  }
+
   interface QuickLaunchAPI {
     window: {
       hide: () => Promise<void>
@@ -15,12 +25,22 @@ declare global {
     }
     app: {
       getInfo: () => Promise<{ version: string; platform: string }>
-      launch: (appData: IndexedApp) => Promise<void>
+      launch: (appData: IndexedApp, searchText?: string) => Promise<void>
     }
     indexer: {
       getApps: () => Promise<IndexedApp[]>
       reindex: () => Promise<IndexedApp[]>
       onAppsUpdated: (callback: (apps: IndexedApp[]) => void) => () => void
+    }
+    shortcuts: {
+      get: (abbrev: string) => Promise<ShortcutCandidate[]>
+      getAll: () => Promise<ShortcutsData>
+      record: (abbrev: string, itemId: string) => Promise<void>
+      delete: (abbrev: string) => Promise<void>
+      clearAll: () => Promise<void>
+      getBackups: () => Promise<{ date: string }[]>
+      restoreBackup: (date: string) => Promise<boolean>
+      getMaxGlobalCount: () => Promise<number>
     }
     settings: {
       get: <T>(key: string) => Promise<T | undefined>

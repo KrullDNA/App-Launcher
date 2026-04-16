@@ -13,6 +13,16 @@ import { join } from 'path'
 import { execFile, spawn } from 'child_process'
 import Store from 'electron-store'
 import { indexApps, getCachedApps, type IndexedApp } from './indexer'
+import {
+  getShortcut,
+  recordUsage,
+  getAllShortcuts,
+  deleteShortcut,
+  clearAll as clearAllShortcuts,
+  getBackups,
+  restoreBackup,
+  getMaxGlobalLaunchCount
+} from './shortcuts-db'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -235,9 +245,46 @@ function setupIPC(): void {
   })
 
   // Launch IPC
-  ipcMain.handle('app:launch', async (_event, appData: IndexedApp) => {
+  ipcMain.handle('app:launch', async (_event, appData: IndexedApp, searchText?: string) => {
+    // Record usage for adaptive learning
+    if (searchText && searchText.trim()) {
+      recordUsage(searchText.trim(), appData.id)
+    }
     await launchApp(appData)
     hideWindow()
+  })
+
+  // Shortcuts IPC
+  ipcMain.handle('shortcuts:get', (_event, abbrev: string) => {
+    return getShortcut(abbrev)
+  })
+
+  ipcMain.handle('shortcuts:getAll', () => {
+    return getAllShortcuts()
+  })
+
+  ipcMain.handle('shortcuts:record', (_event, abbrev: string, itemId: string) => {
+    recordUsage(abbrev, itemId)
+  })
+
+  ipcMain.handle('shortcuts:delete', (_event, abbrev: string) => {
+    deleteShortcut(abbrev)
+  })
+
+  ipcMain.handle('shortcuts:clearAll', () => {
+    clearAllShortcuts()
+  })
+
+  ipcMain.handle('shortcuts:getBackups', () => {
+    return getBackups()
+  })
+
+  ipcMain.handle('shortcuts:restoreBackup', (_event, date: string) => {
+    return restoreBackup(date)
+  })
+
+  ipcMain.handle('shortcuts:getMaxGlobalCount', () => {
+    return getMaxGlobalLaunchCount()
   })
 }
 
