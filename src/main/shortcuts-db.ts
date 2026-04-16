@@ -25,7 +25,17 @@ const MAX_BACKUPS = 7
 // ─── Read helpers ────────────────────────────────────────────
 
 function getAll(): ShortcutsData {
-  return (store.get(SHORTCUTS_KEY) as ShortcutsData | undefined) || {}
+  try {
+    const data = store.get(SHORTCUTS_KEY) as ShortcutsData | undefined
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      return data
+    }
+    return {}
+  } catch (err) {
+    console.error('Corrupt shortcuts database, resetting:', err)
+    store.set(SHORTCUTS_KEY, {})
+    return {}
+  }
 }
 
 function saveAll(data: ShortcutsData): void {

@@ -1,19 +1,23 @@
 {
   "name": "kdna-quicklaunch",
   "version": "1.0.0",
-  "description": "Cross-platform adaptive application launcher",
+  "description": "Cross-platform adaptive application launcher inspired by Quicksilver",
   "main": "./out/main/main.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "package": "electron-builder"
+    "package": "npm run build && electron-builder --publish never",
+    "package:win": "npm run build && electron-builder --win --publish never",
+    "package:mac": "npm run build && electron-builder --mac --publish never",
+    "package:linux": "npm run build && electron-builder --linux --publish never",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
   },
   "repository": {
     "type": "git",
-    "url": "http://local_proxy@127.0.0.1:40102/git/KrullDNA/App-Launcher"
+    "url": "https://github.com/KrullDNA/App-Launcher.git"
   },
-  "keywords": [],
+  "keywords": ["launcher", "quicksilver", "electron", "productivity"],
   "author": "KDNA",
   "license": "MIT",
   "devDependencies": {

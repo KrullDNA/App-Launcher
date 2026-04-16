@@ -25,6 +25,7 @@ function Toast(): React.JSX.Element | null {
 
   return (
     <div
+      className="toast-enter"
       style={{
         position: 'fixed',
         bottom: '12px',

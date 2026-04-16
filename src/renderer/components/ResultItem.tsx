@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { SearchResult } from '../stores/searchStore'
 
 interface ResultItemProps {
@@ -41,7 +41,9 @@ function FallbackIcon({ name }: { name: string }): React.JSX.Element {
 }
 
 function AppIcon({ name, icon }: { name: string; icon?: string }): React.JSX.Element {
-  if (!icon) return <FallbackIcon name={name} />
+  const [hasError, setHasError] = useState(false)
+
+  if (!icon || hasError) return <FallbackIcon name={name} />
 
   return (
     <img
@@ -50,11 +52,7 @@ function AppIcon({ name, icon }: { name: string; icon?: string }): React.JSX.Ele
       width={32}
       height={32}
       style={{ borderRadius: '8px', flexShrink: 0 }}
-      onError={(e) => {
-        // Replace with fallback on load error
-        e.currentTarget.style.display = 'none'
-        e.currentTarget.parentElement?.classList.add('icon-error')
-      }}
+      onError={() => setHasError(true)}
     />
   )
 }
@@ -62,6 +60,7 @@ function AppIcon({ name, icon }: { name: string; icon?: string }): React.JSX.Ele
 export function ResultItem({ result, isSelected, onMouseEnter, onClick }: ResultItemProps): React.JSX.Element {
   return (
     <div
+      className="result-item"
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       style={{

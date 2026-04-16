@@ -24,7 +24,6 @@ const fileFuseOptions: IFuseOptions<IndexedFile> = {
   minMatchCharLength: 1
 }
 
-// System commands available in search
 const SYSTEM_COMMANDS: SearchResult[] = [
   { id: 'sys:lock', name: 'Lock Screen', subtitle: 'Lock the computer', type: 'System', action: 'system-cmd', actionData: 'lock' },
   { id: 'sys:sleep', name: 'Sleep', subtitle: 'Put computer to sleep', type: 'System', action: 'system-cmd', actionData: 'sleep' },
@@ -49,7 +48,6 @@ export function useSearch(): void {
   const appFuseRef = useRef<Fuse<IndexedApp> | null>(null)
   const fileFuseRef = useRef<Fuse<IndexedFile> | null>(null)
 
-  // Rebuild Fuse indices when data changes
   useEffect(() => {
     appFuseRef.current = new Fuse(apps, appFuseOptions)
   }, [apps])
@@ -58,132 +56,143 @@ export function useSearch(): void {
     fileFuseRef.current = new Fuse(files, fileFuseOptions)
   }, [files])
 
-  // Search when query or shortcuts change
+  // Debounced search (50ms)
   useEffect(() => {
     if (!query.trim()) {
       setResults([])
       return
     }
 
-    const allResults: SearchResult[] = []
-    const fuseScores = new Map<string, number>()
+    const timer = setTimeout(() => {
+      runSearch(query, apps, shortcuts, maxGlobalCount, appFuseRef.current, fileFuseRef.current, setResults)
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [query, apps, files, shortcuts, maxGlobalCount, setResults])
+}
 
-    // ─── Web search: '?' prefix ──────────────────────────
-    if (query.startsWith('?') && query.length > 1) {
-      const searchQuery = query.slice(1).trim()
-      if (searchQuery) {
-        allResults.push({
-          id: 'web:search',
-          name: `Search web for: ${searchQuery}`,
-          subtitle: 'Open in default browser',
-          type: 'Web',
-          action: 'web-search',
-          actionData: searchQuery
-        })
-        setResults(allResults)
-        return
-      }
-    }
+function runSearch(
+  query: string,
+  apps: IndexedApp[],
+  shortcuts: ShortcutsData,
+  maxGlobalCount: number,
+  appFuse: Fuse<IndexedApp> | null,
+  fileFuse: Fuse<IndexedFile> | null,
+  setResults: (results: SearchResult[]) => void
+): void {
+  const allResults: SearchResult[] = []
+  const fuseScores = new Map<string, number>()
 
-    // ─── Clipboard history: 'clip' ───────────────────────
-    if (query.toLowerCase() === 'clip' || query.toLowerCase().startsWith('clip ')) {
-      window.quicklaunch.clipboard.getHistory().then((entries) => {
-        const clipResults: SearchResult[] = entries.map((entry) => ({
-          id: entry.id,
-          name: entry.preview,
-          subtitle: new Date(entry.timestamp).toLocaleTimeString(),
-          type: 'Clip' as const,
-          action: 'copy-clip',
-          actionData: entry.text
-        }))
-        setResults(clipResults)
+  // ─── Web search: '?' prefix ──────────────────────────
+  if (query.startsWith('?') && query.length > 1) {
+    const searchQuery = query.slice(1).trim()
+    if (searchQuery) {
+      allResults.push({
+        id: 'web:search',
+        name: `Search web for: ${searchQuery}`,
+        subtitle: 'Open in default browser',
+        type: 'Web',
+        action: 'web-search',
+        actionData: searchQuery
       })
+      setResults(allResults)
       return
     }
+  }
 
-    // ─── Calculator ──────────────────────────────────────
-    if (isCalcExpression(query)) {
-      const calc = evaluateExpression(query)
-      if (calc) {
-        allResults.push({
-          id: 'calc:result',
-          name: calc.expression,
-          subtitle: `= ${calc.result}`,
-          type: 'Calc',
-          action: 'copy-calc',
-          actionData: calc.result
-        })
-      }
+  // ─── Clipboard history: 'clip' (lazy-loaded) ──────────
+  if (query.toLowerCase() === 'clip' || query.toLowerCase().startsWith('clip ')) {
+    window.quicklaunch.clipboard.getHistory().then((entries) => {
+      const clipResults: SearchResult[] = entries.map((entry) => ({
+        id: entry.id,
+        name: entry.preview,
+        subtitle: new Date(entry.timestamp).toLocaleTimeString(),
+        type: 'Clip' as const,
+        action: 'copy-clip',
+        actionData: entry.text
+      }))
+      setResults(clipResults)
+    })
+    return
+  }
+
+  // ─── Calculator ──────────────────────────────────────
+  if (isCalcExpression(query)) {
+    const calc = evaluateExpression(query)
+    if (calc) {
+      allResults.push({
+        id: 'calc:result',
+        name: calc.expression,
+        subtitle: `= ${calc.result}`,
+        type: 'Calc',
+        action: 'copy-calc',
+        actionData: calc.result
+      })
     }
+  }
 
-    // ─── System commands ─────────────────────────────────
-    const sysResults = systemFuse.search(query, { limit: 3 })
-    for (const r of sysResults) {
+  // ─── System commands ─────────────────────────────────
+  const sysResults = systemFuse.search(query, { limit: 3 })
+  for (const r of sysResults) {
+    fuseScores.set(r.item.id, r.score ?? 1.0)
+    allResults.push(r.item)
+  }
+
+  // ─── App search with blended ranking ─────────────────
+  if (appFuse) {
+    const fuseResults = appFuse.search(query, { limit: 20 })
+
+    const appResults: SearchResult[] = fuseResults.map((r) => {
       fuseScores.set(r.item.id, r.score ?? 1.0)
-      allResults.push(r.item)
-    }
+      return {
+        id: r.item.id,
+        name: r.item.name,
+        subtitle: r.item.path,
+        type: 'App' as const,
+        icon: r.item.icon,
+        launchPath: r.item.path
+      }
+    })
 
-    // ─── App search with blended ranking ─────────────────
-    const appFuse = appFuseRef.current
-    if (appFuse) {
-      const fuseResults = appFuse.search(query, { limit: 20 })
-
-      const appResults: SearchResult[] = fuseResults.map((r) => {
-        fuseScores.set(r.item.id, r.score ?? 1.0)
-        return {
-          id: r.item.id,
-          name: r.item.name,
-          subtitle: r.item.path,
-          type: 'App' as const,
-          icon: r.item.icon,
-          launchPath: r.item.path
-        }
-      })
-
-      // Include shortcut candidates Fuse missed
-      const candidates = shortcuts[query] || []
-      for (const candidate of candidates) {
-        if (!appResults.find((r) => r.id === candidate.itemId)) {
-          const app = apps.find((a) => a.id === candidate.itemId)
-          if (app) {
-            fuseScores.set(app.id, 0.8)
-            appResults.push({
-              id: app.id,
-              name: app.name,
-              subtitle: app.path,
-              type: 'App' as const,
-              icon: app.icon,
-              launchPath: app.path
-            })
-          }
+    const candidates = shortcuts[query] || []
+    for (const candidate of candidates) {
+      if (!appResults.find((r) => r.id === candidate.itemId)) {
+        const app = apps.find((a) => a.id === candidate.itemId)
+        if (app) {
+          fuseScores.set(app.id, 0.8)
+          appResults.push({
+            id: app.id,
+            name: app.name,
+            subtitle: app.path,
+            type: 'App' as const,
+            icon: app.icon,
+            launchPath: app.path
+          })
         }
       }
+    }
 
-      // Apply blended ranking to app results
-      const ranked = scoreAndSort(appResults, fuseScores, {
-        query,
-        shortcuts,
-        maxGlobalCount
+    const ranked = scoreAndSort(appResults, fuseScores, {
+      query,
+      shortcuts,
+      maxGlobalCount
+    })
+
+    allResults.push(...ranked)
+  }
+
+  // ─── File search ─────────────────────────────────────
+  if (fileFuse) {
+    const fileResults = fileFuse.search(query, { limit: 5 })
+    for (const r of fileResults) {
+      allResults.push({
+        id: r.item.id,
+        name: r.item.name,
+        subtitle: r.item.path,
+        type: 'File',
+        launchPath: r.item.path
       })
-
-      allResults.push(...ranked)
     }
+  }
 
-    // ─── File search ─────────────────────────────────────
-    const fileFuse = fileFuseRef.current
-    if (fileFuse) {
-      const fileResults = fileFuse.search(query, { limit: 5 })
-      for (const r of fileResults) {
-        allResults.push({
-          id: r.item.id,
-          name: r.item.name,
-          subtitle: r.item.path,
-          type: 'File',
-          launchPath: r.item.path
-        })
-      }
-    }
-
-    setResults(allResults)
-  }, [query, apps, files, shortcuts, maxGlobalCount, setResults])
+  setResults(allResults)
 }
