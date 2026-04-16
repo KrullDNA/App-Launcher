@@ -7,6 +7,13 @@ export interface IndexedApp {
   icon?: string
 }
 
+export interface IndexedFile {
+  id: string
+  name: string
+  path: string
+  modifiedAt?: string
+}
+
 export interface ShortcutCandidate {
   itemId: string
   count: number
@@ -15,6 +22,13 @@ export interface ShortcutCandidate {
 
 export interface ShortcutsData {
   [abbrev: string]: ShortcutCandidate[]
+}
+
+export interface ClipboardEntry {
+  id: string
+  text: string
+  preview: string
+  timestamp: string
 }
 
 const api = {
@@ -35,10 +49,10 @@ const api = {
       const handler = (_event: Electron.IpcRendererEvent, apps: IndexedApp[]): void =>
         callback(apps)
       ipcRenderer.on('indexer:apps-updated', handler)
-      return () => {
-        ipcRenderer.removeListener('indexer:apps-updated', handler)
-      }
-    }
+      return () => ipcRenderer.removeListener('indexer:apps-updated', handler)
+    },
+    getFiles: (): Promise<IndexedFile[]> => ipcRenderer.invoke('indexer:getFiles'),
+    reindexFiles: (): Promise<IndexedFile[]> => ipcRenderer.invoke('indexer:reindexFiles')
   },
   shortcuts: {
     get: (abbrev: string): Promise<ShortcutCandidate[]> =>
@@ -58,6 +72,22 @@ const api = {
     getMaxGlobalCount: (): Promise<number> =>
       ipcRenderer.invoke('shortcuts:getMaxGlobalCount')
   },
+  shell: {
+    openPath: (filePath: string): Promise<void> =>
+      ipcRenderer.invoke('shell:openPath', filePath),
+    openExternal: (url: string): Promise<void> =>
+      ipcRenderer.invoke('shell:openExternal', url)
+  },
+  clipboard: {
+    getHistory: (): Promise<ClipboardEntry[]> =>
+      ipcRenderer.invoke('clipboard:getHistory'),
+    write: (text: string): Promise<void> =>
+      ipcRenderer.invoke('clipboard:write', text)
+  },
+  system: {
+    execute: (command: string): Promise<void> =>
+      ipcRenderer.invoke('system:execute', command)
+  },
   settings: {
     get: <T>(key: string): Promise<T | undefined> => ipcRenderer.invoke('settings:get', key),
     set: <T>(key: string, value: T): Promise<void> => ipcRenderer.invoke('settings:set', key, value)
@@ -65,16 +95,12 @@ const api = {
   onWindowShown: (callback: () => void): (() => void) => {
     const handler = (): void => callback()
     ipcRenderer.on('window-shown', handler)
-    return () => {
-      ipcRenderer.removeListener('window-shown', handler)
-    }
+    return () => ipcRenderer.removeListener('window-shown', handler)
   },
   onWindowHidden: (callback: () => void): (() => void) => {
     const handler = (): void => callback()
     ipcRenderer.on('window-hidden', handler)
-    return () => {
-      ipcRenderer.removeListener('window-hidden', handler)
-    }
+    return () => ipcRenderer.removeListener('window-hidden', handler)
   }
 }
 

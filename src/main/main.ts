@@ -12,7 +12,13 @@ import {
 import { join } from 'path'
 import { execFile, spawn } from 'child_process'
 import Store from 'electron-store'
-import { indexApps, getCachedApps, type IndexedApp } from './indexer'
+import { indexApps, getCachedApps, indexFiles, getCachedFiles, type IndexedApp, type IndexedFile } from './indexer'
+import {
+  startClipboardMonitor,
+  stopClipboardMonitor,
+  getClipboardHistory,
+  writeToClipboard
+} from './clipboard-manager'
 import {
   getShortcut,
   recordUsage,
@@ -188,6 +194,43 @@ async function launchApp(appItem: IndexedApp): Promise<void> {
   }
 }
 
+// ─── System commands ─────────────────────────────────────────
+
+async function executeSystemCommand(command: string): Promise<void> {
+  const platform = process.platform
+  try {
+    switch (command) {
+      case 'lock':
+        if (platform === 'darwin') execFile('pmset', ['displaysleepnow'])
+        else if (platform === 'win32') execFile('rundll32.exe', ['user32.dll,LockWorkStation'])
+        else spawn('loginctl', ['lock-session'], { detached: true, stdio: 'ignore' }).unref()
+        break
+      case 'sleep':
+        if (platform === 'darwin') execFile('pmset', ['sleepnow'])
+        else if (platform === 'win32') execFile('rundll32.exe', ['powrprof.dll,SetSuspendState', '0', '1', '0'])
+        else spawn('systemctl', ['suspend'], { detached: true, stdio: 'ignore' }).unref()
+        break
+      case 'restart':
+        if (platform === 'darwin') execFile('osascript', ['-e', 'tell app "System Events" to restart'])
+        else if (platform === 'win32') execFile('shutdown', ['/r', '/t', '0'])
+        else spawn('systemctl', ['reboot'], { detached: true, stdio: 'ignore' }).unref()
+        break
+      case 'shutdown':
+        if (platform === 'darwin') execFile('osascript', ['-e', 'tell app "System Events" to shut down'])
+        else if (platform === 'win32') execFile('shutdown', ['/s', '/t', '0'])
+        else spawn('systemctl', ['poweroff'], { detached: true, stdio: 'ignore' }).unref()
+        break
+      case 'emptytrash':
+        if (platform === 'darwin') execFile('osascript', ['-e', 'tell app "Finder" to empty the trash'])
+        else if (platform === 'win32') execFile('PowerShell.exe', ['-Command', 'Clear-RecycleBin -Force'])
+        else spawn('trash-empty', [], { detached: true, stdio: 'ignore' }).unref()
+        break
+    }
+  } catch (err) {
+    console.error('System command failed:', command, err)
+  }
+}
+
 // ─── Indexing lifecycle ──────────────────────────────────────
 
 function sendAppsToRenderer(apps: IndexedApp[]): void {
@@ -286,6 +329,42 @@ function setupIPC(): void {
   ipcMain.handle('shortcuts:getMaxGlobalCount', () => {
     return getMaxGlobalLaunchCount()
   })
+
+  // File indexing IPC
+  ipcMain.handle('indexer:getFiles', () => {
+    return getCachedFiles()
+  })
+
+  ipcMain.handle('indexer:reindexFiles', async () => {
+    return await indexFiles()
+  })
+
+  // File/path open IPC
+  ipcMain.handle('shell:openPath', async (_event, filePath: string) => {
+    await shell.openPath(filePath)
+    hideWindow()
+  })
+
+  // Web search IPC
+  ipcMain.handle('shell:openExternal', async (_event, url: string) => {
+    await shell.openExternal(url)
+    hideWindow()
+  })
+
+  // Clipboard IPC
+  ipcMain.handle('clipboard:getHistory', () => {
+    return getClipboardHistory()
+  })
+
+  ipcMain.handle('clipboard:write', (_event, text: string) => {
+    writeToClipboard(text)
+  })
+
+  // System commands IPC
+  ipcMain.handle('system:execute', async (_event, command: string) => {
+    await executeSystemCommand(command)
+    hideWindow()
+  })
 }
 
 // ─── App lifecycle ───────────────────────────────────────────
@@ -304,14 +383,19 @@ app.whenReady().then(async () => {
 
   // Initial index (background)
   await runIndexing()
+  await indexFiles()
 
   // Start periodic re-index
   startReindexTimer()
+
+  // Start clipboard monitor
+  startClipboardMonitor()
 })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   if (reindexTimer) clearInterval(reindexTimer)
+  stopClipboardMonitor()
 })
 
 app.on('window-all-closed', () => {

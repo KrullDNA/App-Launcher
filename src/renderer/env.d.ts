@@ -8,6 +8,13 @@ declare global {
     icon?: string
   }
 
+  interface IndexedFile {
+    id: string
+    name: string
+    path: string
+    modifiedAt?: string
+  }
+
   interface ShortcutCandidate {
     itemId: string
     count: number
@@ -16,6 +23,13 @@ declare global {
 
   interface ShortcutsData {
     [abbrev: string]: ShortcutCandidate[]
+  }
+
+  interface ClipboardEntry {
+    id: string
+    text: string
+    preview: string
+    timestamp: string
   }
 
   interface QuickLaunchAPI {
@@ -31,6 +45,8 @@ declare global {
       getApps: () => Promise<IndexedApp[]>
       reindex: () => Promise<IndexedApp[]>
       onAppsUpdated: (callback: (apps: IndexedApp[]) => void) => () => void
+      getFiles: () => Promise<IndexedFile[]>
+      reindexFiles: () => Promise<IndexedFile[]>
     }
     shortcuts: {
       get: (abbrev: string) => Promise<ShortcutCandidate[]>
@@ -41,6 +57,17 @@ declare global {
       getBackups: () => Promise<{ date: string }[]>
       restoreBackup: (date: string) => Promise<boolean>
       getMaxGlobalCount: () => Promise<number>
+    }
+    shell: {
+      openPath: (filePath: string) => Promise<void>
+      openExternal: (url: string) => Promise<void>
+    }
+    clipboard: {
+      getHistory: () => Promise<ClipboardEntry[]>
+      write: (text: string) => Promise<void>
+    }
+    system: {
+      execute: (command: string) => Promise<void>
     }
     settings: {
       get: <T>(key: string) => Promise<T | undefined>

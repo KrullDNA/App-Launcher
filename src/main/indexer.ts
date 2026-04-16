@@ -11,8 +11,16 @@ export interface IndexedApp {
   icon?: string // base64 data URI
 }
 
+export interface IndexedFile {
+  id: string
+  name: string
+  path: string
+  modifiedAt?: string
+}
+
 const store = new Store()
 const CACHE_KEY = 'indexer:appCache'
+const FILE_CACHE_KEY = 'indexer:fileCache'
 
 // ─── Public API ──────────────────────────────────────────────
 
@@ -327,6 +335,174 @@ async function loadIconFromPath(iconPath: string): Promise<string | undefined> {
   } catch {
     return undefined
   }
+}
+
+// ─── File indexing ───────────────────────────────────────────
+
+export async function indexFiles(): Promise<IndexedFile[]> {
+  const files: IndexedFile[] = []
+
+  try {
+    const recent = await indexRecentFiles()
+    files.push(...recent)
+  } catch (err) {
+    console.error('Recent files indexing error:', err)
+  }
+
+  try {
+    const userDirs = (store.get('settings:indexedDirs') as string[] | undefined) || []
+    for (const dir of userDirs) {
+      const found = await indexUserDirectory(dir)
+      files.push(...found)
+    }
+  } catch (err) {
+    console.error('User directory indexing error:', err)
+  }
+
+  // Deduplicate by path
+  const seen = new Set<string>()
+  const deduped = files.filter((f) => {
+    if (seen.has(f.path)) return false
+    seen.add(f.path)
+    return true
+  })
+
+  store.set(FILE_CACHE_KEY, deduped)
+  return deduped
+}
+
+export function getCachedFiles(): IndexedFile[] {
+  return (store.get(FILE_CACHE_KEY) as IndexedFile[] | undefined) || []
+}
+
+async function indexRecentFiles(): Promise<IndexedFile[]> {
+  const platform = process.platform
+  if (platform === 'win32') return indexRecentFilesWindows()
+  if (platform === 'darwin') return indexRecentFilesMac()
+  return indexRecentFilesLinux()
+}
+
+async function indexRecentFilesWindows(): Promise<IndexedFile[]> {
+  const recentDir = join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Recent')
+  if (!(await dirExists(recentDir))) return []
+
+  const files: IndexedFile[] = []
+  try {
+    const entries = await readdir(recentDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isFile()) continue
+      if (entry.name.endsWith('.lnk')) {
+        // These are shortcuts to recent files
+        const name = entry.name.replace(/\.lnk$/, '')
+        const fullPath = join(recentDir, entry.name)
+        const s = await stat(fullPath).catch(() => null)
+        files.push({
+          id: `file:${name.toLowerCase().replace(/\s+/g, '-')}`,
+          name,
+          path: fullPath,
+          modifiedAt: s?.mtime.toISOString()
+        })
+      }
+    }
+  } catch { /* skip */ }
+  return files.slice(0, 50)
+}
+
+async function indexRecentFilesMac(): Promise<IndexedFile[]> {
+  // Read com.apple.recentitems.plist is complex; use a simpler approach
+  // Scan ~/Documents and ~/Desktop for recently modified files
+  const files: IndexedFile[] = []
+  const dirs = [join(homedir(), 'Documents'), join(homedir(), 'Desktop')]
+  for (const dir of dirs) {
+    if (!(await dirExists(dir))) continue
+    try {
+      const entries = await readdir(dir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isFile() || entry.name.startsWith('.')) continue
+        const fullPath = join(dir, entry.name)
+        const s = await stat(fullPath).catch(() => null)
+        files.push({
+          id: `file:${entry.name.toLowerCase().replace(/\s+/g, '-')}`,
+          name: entry.name,
+          path: fullPath,
+          modifiedAt: s?.mtime.toISOString()
+        })
+      }
+    } catch { /* skip */ }
+  }
+  // Sort by modified date desc and take top 50
+  files.sort((a, b) => (b.modifiedAt || '').localeCompare(a.modifiedAt || ''))
+  return files.slice(0, 50)
+}
+
+async function indexRecentFilesLinux(): Promise<IndexedFile[]> {
+  const xbelPath = join(homedir(), '.local', 'share', 'recently-used.xbel')
+  if (!(await fileExists(xbelPath))) return []
+
+  const files: IndexedFile[] = []
+  try {
+    const content = await readFile(xbelPath, 'utf-8')
+    // Parse href attributes from <bookmark> elements
+    const hrefRegex = /href="file:\/\/([^"]+)"/g
+    let match: RegExpExecArray | null
+    while ((match = hrefRegex.exec(content)) !== null) {
+      const filePath = decodeURIComponent(match[1])
+      const name = basename(filePath)
+      if (await fileExists(filePath)) {
+        const s = await stat(filePath).catch(() => null)
+        files.push({
+          id: `file:${name.toLowerCase().replace(/\s+/g, '-')}-${filePath.length}`,
+          name,
+          path: filePath,
+          modifiedAt: s?.mtime.toISOString()
+        })
+      }
+      if (files.length >= 50) break
+    }
+  } catch { /* skip */ }
+  return files
+}
+
+async function indexUserDirectory(dir: string): Promise<IndexedFile[]> {
+  if (!(await dirExists(dir))) return []
+
+  const files: IndexedFile[] = []
+  const allFiles = await scanDirRecursiveAll(dir, 3)
+  for (const filePath of allFiles) {
+    const name = basename(filePath)
+    if (name.startsWith('.')) continue
+    const s = await stat(filePath).catch(() => null)
+    files.push({
+      id: `file:${name.toLowerCase().replace(/\s+/g, '-')}-${filePath.length}`,
+      name,
+      path: filePath,
+      modifiedAt: s?.mtime.toISOString()
+    })
+  }
+  return files
+}
+
+async function scanDirRecursiveAll(
+  dir: string,
+  maxDepth: number,
+  currentDepth = 0
+): Promise<string[]> {
+  if (currentDepth > maxDepth) return []
+  const results: string[] = []
+  try {
+    const entries = await readdir(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const fullPath = join(dir, entry.name)
+      if (entry.isFile()) {
+        results.push(fullPath)
+      } else if (entry.isDirectory() && currentDepth < maxDepth) {
+        const sub = await scanDirRecursiveAll(fullPath, maxDepth, currentDepth + 1)
+        results.push(...sub)
+      }
+    }
+  } catch { /* skip */ }
+  return results
 }
 
 // ─── Helpers ─────────────────────────────────────────────────

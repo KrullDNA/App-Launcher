@@ -11,10 +11,46 @@ const ITEM_HEIGHT = 52
 const DIVIDER_HEIGHT = 1
 const MAX_VISIBLE = 8
 
+function Toast(): React.JSX.Element | null {
+  const toastMessage = useSearchStore((s) => s.toastMessage)
+  const setToastMessage = useSearchStore((s) => s.setToastMessage)
+
+  useEffect(() => {
+    if (!toastMessage) return
+    const timer = setTimeout(() => setToastMessage(''), 1500)
+    return () => clearTimeout(timer)
+  }, [toastMessage, setToastMessage])
+
+  if (!toastMessage) return null
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        bottom: '12px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        backgroundColor: 'var(--accent)',
+        color: '#FFFFFF',
+        padding: '6px 16px',
+        borderRadius: '8px',
+        fontSize: '13px',
+        fontWeight: 500,
+        zIndex: 100,
+        pointerEvents: 'none',
+        opacity: 0.95
+      }}
+    >
+      {toastMessage}
+    </div>
+  )
+}
+
 function App(): React.JSX.Element {
   const [visible, setVisible] = useState(true)
   const results = useSearchStore((s) => s.results)
   const setApps = useSearchStore((s) => s.setApps)
+  const setFiles = useSearchStore((s) => s.setFiles)
   const setShortcuts = useSearchStore((s) => s.setShortcuts)
   const setMaxGlobalCount = useSearchStore((s) => s.setMaxGlobalCount)
 
@@ -37,10 +73,14 @@ function App(): React.JSX.Element {
     setMaxGlobalCount(maxCount)
   }, [setShortcuts, setMaxGlobalCount])
 
-  // Load indexed apps + shortcuts on mount
+  // Load indexed apps + files + shortcuts on mount
   useEffect(() => {
     window.quicklaunch.indexer.getApps().then((apps) => {
       if (apps.length > 0) setApps(apps)
+    })
+
+    window.quicklaunch.indexer.getFiles().then((files) => {
+      setFiles(files)
     })
 
     const cleanup = window.quicklaunch.indexer.onAppsUpdated((apps) => {
@@ -50,9 +90,9 @@ function App(): React.JSX.Element {
     refreshShortcuts()
 
     return cleanup
-  }, [setApps, refreshShortcuts])
+  }, [setApps, setFiles, refreshShortcuts])
 
-  // Refresh shortcuts when window is shown (picks up changes from last launch)
+  // Refresh shortcuts when window is shown
   useEffect(() => {
     const cleanup = window.quicklaunch.onWindowShown(() => {
       setVisible(true)
@@ -97,11 +137,13 @@ function App(): React.JSX.Element {
         backgroundColor: 'var(--bg-primary)',
         borderRadius: '12px',
         overflow: 'hidden',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+        position: 'relative'
       }}
     >
       <SearchBar />
       <ResultsList />
+      <Toast />
     </div>
   )
 }

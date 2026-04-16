@@ -1,6 +1,7 @@
 import React from 'react'
 import { useSearchStore } from '../stores/searchStore'
 import { ResultItem } from './ResultItem'
+import { executeResult } from '../hooks/useKeyboardNav'
 
 const MAX_VISIBLE = 8
 
@@ -9,6 +10,7 @@ export function ResultsList(): React.JSX.Element | null {
   const selectedIndex = useSearchStore((s) => s.selectedIndex)
   const setSelectedIndex = useSearchStore((s) => s.setSelectedIndex)
   const query = useSearchStore((s) => s.query)
+  const setToastMessage = useSearchStore((s) => s.setToastMessage)
 
   if (results.length === 0) return null
 
@@ -37,14 +39,7 @@ export function ResultsList(): React.JSX.Element | null {
             result={result}
             isSelected={index === selectedIndex}
             onMouseEnter={() => setSelectedIndex(index)}
-            onClick={() => {
-              if (result.launchPath) {
-                window.quicklaunch.app.launch(
-                  { id: result.id, name: result.name, path: result.launchPath },
-                  query
-                )
-              }
-            }}
+            onClick={() => executeResult(result, query, setToastMessage)}
           />
         ))}
       </div>
